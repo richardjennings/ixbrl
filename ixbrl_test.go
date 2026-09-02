@@ -76,3 +76,36 @@ func TestContextValidation(t *testing.T) {
 		t.Error("expected an error for a context with no period")
 	}
 }
+
+// TestComparativeColumn: a table with headings and prior figures renders a heading
+// row and a second figure column; a row with no prior figure gets an empty cell; a
+// plain Rows table stays single-column.
+func TestComparativeColumn(t *testing.T) {
+	d := sampleDoc()
+	d.Contexts = append(d.Contexts, Context{ID: "then", EntityScheme: "http://www.companieshouse.gov.uk/", EntityID: "12345678", Instant: "2026-03-31"})
+	d.Body = []Block{Table([]string{"2027-03-31", "2026-03-31"},
+		Row{Label: "Fixed assets", Amount: Numeric("uk-core:FixedAssets", "now", "GBP", Amount{Magnitude: "1000.00"}, 2), Prior: Numeric("uk-core:FixedAssets", "then", "GBP", Amount{Magnitude: "800.00"}, 2)},
+		Row{Label: "Note", Amount: Text("n/a"), Emphasis: "total"},
+	)}
+	out, err := d.Render()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`<tr class="head"><th></th><th class="num">2027-03-31</th><th class="num">2026-03-31</th></tr>`,
+		`<ix:nonFraction name="uk-core:FixedAssets" contextRef="then" unitRef="GBP" decimals="2">800.00</ix:nonFraction></td></tr>`,
+		`<tr class="total"><td>Note</td><td class="num">n/a</td><td class="num"></td></tr>`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q", want)
+		}
+	}
+
+	single, err := sampleDoc().Render()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(single, `<tr class="head">`) || strings.Contains(single, `<td class="num"></td>`) {
+		t.Error("a table with no prior figures grew a second column")
+	}
+}

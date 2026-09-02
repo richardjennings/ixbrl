@@ -161,14 +161,21 @@ func Heading(level int, content ...Inline) Block { return heading{level, content
 // Paragraph is a <p>, optionally with a CSS class.
 func Paragraph(class string, content ...Inline) Block { return para{class, content} }
 
-// Rows assembles a Table from rows.
-func Rows(rows ...Row) Block { return table{rows} }
+// Rows assembles a table from rows with no heading row.
+func Rows(rows ...Row) Block { return table{rows: rows} }
 
-// Row is one table row. Emphasis selects a CSS class ("", "subtotal", "total") the
-// stylesheet can rule on.
+// Table assembles a table with a heading over each figure column — for example
+// the two period-end dates above a current column and a comparative column.
+func Table(heads []string, rows ...Row) Block { return table{heads: heads, rows: rows} }
+
+// Row is one table row. Amount is the figure for the period reported on; Prior,
+// when set, is the comparative figure for the period before and goes in a second
+// column. Emphasis selects a CSS class ("", "subtotal", "total") the stylesheet
+// can rule on.
 type Row struct {
 	Label    string
 	Amount   Inline
+	Prior    Inline
 	Emphasis string
 }
 
@@ -180,7 +187,24 @@ type para struct {
 	class   string
 	content []Inline
 }
-type table struct{ rows []Row }
+type table struct {
+	heads []string
+	rows  []Row
+}
+
+// twoColumns reports whether the table carries a comparative column: any row has
+// a prior figure, or the headings name two columns.
+func (t table) twoColumns() bool {
+	if len(t.heads) > 1 {
+		return true
+	}
+	for _, r := range t.rows {
+		if r.Prior != nil {
+			return true
+		}
+	}
+	return false
+}
 
 func (h heading) writeBlock(w *writer) {
 	tag := "h" + strconv.Itoa(clamp(h.level, 1, 6))
@@ -202,7 +226,17 @@ func (p para) writeBlock(w *writer) {
 	w.raw("</p>\n")
 }
 func (t table) writeBlock(w *writer) {
+	two := t.twoColumns()
 	w.raw("<table>\n")
+	if len(t.heads) > 0 {
+		w.raw(`<tr class="head"><th></th>`)
+		for _, h := range t.heads {
+			w.raw(`<th class="num">`)
+			w.esc(h)
+			w.raw("</th>")
+		}
+		w.raw("</tr>\n")
+	}
 	for _, r := range t.rows {
 		w.raw("<tr")
 		if r.Emphasis != "" {
@@ -214,7 +248,15 @@ func (t table) writeBlock(w *writer) {
 		if r.Amount != nil {
 			r.Amount.writeInline(w)
 		}
-		w.raw("</td></tr>\n")
+		w.raw("</td>")
+		if two {
+			w.raw(`<td class="num">`)
+			if r.Prior != nil {
+				r.Prior.writeInline(w)
+			}
+			w.raw("</td>")
+		}
+		w.raw("</tr>\n")
 	}
 	w.raw("</table>\n")
 }
